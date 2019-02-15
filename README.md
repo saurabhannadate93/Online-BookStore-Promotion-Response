@@ -10,8 +10,8 @@ to the offer. The total sample of 33,713 customers is divided into a training sa
 customers and a test sample 25,402 customers. The goal of the project is to build a predictive
 model for targamt based on the predictor variables from the past purchase history and use the
 model to predict targamt for the test sample customers. The response rates (proportion of
-customers with targamt > 0, i.e., who bought a book) are 327=8311 = 3:93% in the training
-sample and also 999=25402 = 3:93% in the test sample. Note that targamt is log-transformed
+customers with targamt > 0, i.e., who bought a book) are 327/8311 = 3.93% in the training
+sample and also 999/25,402 = 3.93% in the test sample. Note that targamt is log-transformed
 as logtargamt = ln(targamt+1), so that if targamt = 0 then logtargamt is also 0.
 
 ## Data: 
@@ -25,14 +25,14 @@ customers:
 * frequency: number of orders
 * amount: total past purchase amount in euros (not sure why all purchase amounts and
 * prices are reported to many decimal places)
-* tof: time on le
+* tof: time on file
 * Fxx: frequency of orders of books of category xx
 * Mxx: amount of purchase of books of category xx
 
-The following are the categories : 1=ction, 3=classics, 5=cartoons, 6=legends, 7=phi-
+The following are the categories : 1=Action, 3=classics, 5=cartoons, 6=legends, 7=phi-
 losophy, 8=religion, 9=psychology, 10=linguistics, 12=art, 14=music, 17=art reprints,
 19=history, 20=contemporary history, 21=economy, 22=politics, 23=science, 26=com-
-puter science, 27=trac, railroads, 30=maps, 31=travel guides, 35=health, 36=cooking,
+puter science, 27=traffic, railroads, 30=maps, 31=travel guides, 35=health, 36=cooking,
 37=learning, 38=games and riddles, 39=sports, 40=hobbies, 41=nature/animals/plants,
 44=encyclopedias, 50=videos, DVDs, 99=non-books
       
