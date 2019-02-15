@@ -1,0 +1,87 @@
+---
+title: "Predictive Analytics Project Exploratory 11-17"
+author: "JLewyckyj"
+date: "11/17/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Load Data
+
+```{r}
+setwd("/nfs/home/jsl2985/z/Predictive Analytics/Projects")
+
+book <- read.csv("book.csv")
+
+train <- subset(book, !is.na(book$logtargamt))
+test <- subset(book, is.na(book$logtargamt))
+```
+
+#Correlations between category variables, all data
+
+```{r}
+f <- book[,c(7:36)]
+m <- book[,c(37:66)]
+
+cor1 <- cor(f)
+cor2 <- cor(m)
+
+write.csv(cor1, "Frequency Correlations.csv")
+write.csv(cor2, "Amount Correlations.csv")
+```
+
+Frequencies Correlations:<br>
+Fiction is pretty correlated with many categories<br>
+  Highest are Classics (0.52), Cartoon (0.51), Hobby (0.45), Art (0.44), History (0.44)<br>
+  <br>
+Philosophy and Religion: 0.47<br>
+History and Religion: 0.49<br>
+History and Art: 0.54<br>
+History and Contemporary History: 0.51<br>
+History and Travel Guides: 0.45<br>
+Art and Travel Guides: 0.43<br>
+<br>
+Linguistics and Encyclopedia: 0.48
+Health and Learning: 0.49<br>
+Encyclopedia and Learning: 0.46<br>
+<br>
+Hobby and Nature: 0.53<br>
+<br>
+Uncorrelated with everything: Facsimile, Sports, Video, Non-Books
+<br><br>
+Amounts Correlations:<br>
+Fiction is pretty correlated with many categories<br>
+  Highest are Cartoons (0.39), Art (0.35), History (0.34)<br>
+  <br>
+Art and History: 0.48<br>
+Art and Travel Guides: 0.39<br>
+History and Contemporary History: 0.42<br>
+History and Travel Guides: 0.38<br>
+<br>
+Hobby and Nature: 0.40
+Uncorrelated with everything: Religion, Music, Facsimile, Health, Learning, Sports, Non-Books
+<br><br>
+History, Art, Contemporary History, Travel Guides correlated in both frequency and amounts, as are Hobby and Nature, and Fiction and Cartoon
+
+#Relationships between category variables and logtargamt, only training set
+
+```{r}
+data_corr <- train[,-c(1,3:6)]
+cor(data_corr[-1], data_corr$logtargamt)
+```
+
+Very uncorrelated for each category on logtargamt.
+
+##Correlations only for logtargamt > 0
+
+```{r}
+train$successFlag <- 0
+train$successFlag[train$logtargamt > 0] = 1
+
+data_corr <- train[train$successFlag == 1,-c(1,3:6)]
+cor(data_corr[-1], data_corr$logtargamt)
+```
+

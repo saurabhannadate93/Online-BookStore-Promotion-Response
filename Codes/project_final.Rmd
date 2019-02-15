@@ -1,0 +1,577 @@
+---
+title: "MSiA401Team1Project"
+author: "Team 1"
+date: "11 November 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Reading the files and importing libraries
+
+```{r}
+rm(list = ls())
+library(pROC)
+library(lubridate)
+book <- read.csv("book.csv")
+ordersall <- read.csv("ordersall.csv", stringsAsFactors = FALSE)
+booktest <- read.csv("booktest.csv", stringsAsFactors = FALSE)
+summary(book)
+summary(ordersall)
+```
+
+# Coding success flag in the book database and dropping unnecessary variables
+```{r}
+book$successFlag <- 0
+book$successFlag[book$logtargamt > 0] = 1
+
+book$Mgroup <- book$Mfiction1 + 
+  book$Mcartoons5 + 
+  book$Mart12 + 
+  book$Mhistory19 + 
+  book$Mtravelguides31 + 
+  book$Mhobby40 + 
+  book$Mconthist20 + 
+  book$Mnature41
+
+book$Fgroup <- book$Ffiction1 + 
+  book$Fcartoons5 + 
+  book$Fart12 + 
+  book$Fhistory19 + 
+  book$Ftravelguides31 + 
+  book$Fhobby40 + 
+  book$Fconthist20 + 
+  book$Fnature41
+```
+# Extracting features from the ordersall dataset
+```{r}
+#Converting the orderdate column to date format
+typeof(ordersall$orddate)
+head(ordersall)
+ordersall$orddate <- dmy(ordersall$orddate)
+head(ordersall)
+
+#Creating a total quantity database
+ordersalltot <- ordersall
+aggordersalltot <- ordersalltot[,c('id', 'qty')]
+aggordersalltot <- aggregate(aggordersalltot, by = list(aggordersalltot$id), FUN = sum)
+aggordersalltot$id <- aggordersalltot$Group.1
+aggordersalltot <- aggordersalltot[,c('id', 'qty')]
+summary(aggordersalltot)
+
+#Creating a 1 months database
+ordersall1mo <- ordersall[ordersall$orddate >= dmy('1-Jul-14'),]
+
+#summary(ordersall1mo)
+aggordersall1mo <- ordersall1mo[,c('id', 'qty', 'price')]
+aggordersall1mo <- aggregate(aggordersall1mo, by = list(aggordersall1mo$id), FUN = sum)
+aggordersall1mo$id <- aggordersall1mo$Group.1
+aggordersall1mo <- aggordersall1mo[,c('id', 'qty', 'price')]
+summary(aggordersall1mo)
+names(aggordersall1mo) <- c('id', 'qty1mo', 'price1mo')
+
+#Creating a 3 months database
+ordersall3mo <- ordersall[ordersall$orddate >= dmy('1-May-14'),]
+aggordersall3mo <- ordersall3mo[,c('id', 'qty', 'price')]
+aggordersall3mo <- aggregate(aggordersall3mo, by = list(aggordersall3mo$id), FUN = sum)
+aggordersall3mo$id <- aggordersall3mo$Group.1
+aggordersall3mo <- aggordersall3mo[,c('id', 'qty', 'price')]
+summary(aggordersall3mo)
+
+#Creating a 6 months database
+ordersall6mo <- ordersall[ordersall$orddate >= dmy('1-Feb-14'),]
+aggordersall6mo <- ordersall6mo[,c('id', 'qty', 'price')]
+aggordersall6mo <- aggregate(aggordersall6mo, by = list(aggordersall6mo$id), FUN = sum)
+aggordersall6mo$id <- aggordersall6mo$Group.1
+aggordersall6mo <- aggordersall6mo[,c('id', 'qty', 'price')]
+summary(aggordersall6mo)
+
+#Creating a 12 months database
+ordersall12mo <- ordersall[ordersall$orddate >= dmy('1-Aug-13'),]
+aggordersall12mo <- ordersall12mo[,c('id', 'qty', 'price')]
+aggordersall12mo <- aggregate(aggordersall12mo, by = list(aggordersall12mo$id), FUN = sum)
+aggordersall12mo$id <- aggordersall12mo$Group.1
+aggordersall12mo <- aggordersall12mo[,c('id', 'qty', 'price')]
+summary(aggordersall12mo)
+names(aggordersall12mo) <- c('id', 'qty12mo', 'price12mo')
+```
+
+#Merging and creating new features
+
+```{r}
+bookMod <- merge(book, aggordersall3mo, by = 'id', all.x = TRUE, all.y = FALSE)
+bookMod <- merge(bookMod, aggordersall6mo, by = 'id', all.x = TRUE, all.y = FALSE, suffixes = c('3mo','6mo'))
+bookMod <- merge(bookMod, aggordersall1mo, by = 'id', all.x = TRUE, all.y = FALSE, suffixes = c('','1mo'))
+bookMod <- merge(bookMod, aggordersall12mo, by = 'id', all.x = TRUE, all.y = FALSE, suffixes = c('','12mo'))
+bookMod <- merge(bookMod, aggordersalltot, by = 'id', all.x = TRUE, all.y = FALSE, suffixes = c('','tot'))
+
+
+bookMod$qty3mo[is.na(bookMod$qty3mo)] <- 0
+bookMod$qty6mo[is.na(bookMod$qty6mo)] <- 0
+bookMod$qty1mo[is.na(bookMod$qty1mo)] <- 0
+bookMod$qty12mo[is.na(bookMod$qty12mo)] <- 0
+bookMod$price3mo[is.na(bookMod$price3mo)] <- 0
+bookMod$price6mo[is.na(bookMod$price6mo)] <- 0
+bookMod$price1mo[is.na(bookMod$price1mo)] <- 0
+bookMod$price12mo[is.na(bookMod$price12mo)] <- 0
+bookMod$qty[is.na(bookMod$qty)] <- 0
+
+#Creating a new user flag
+bookMod$newUserFlag <- 0
+bookMod$newUserFlag[bookMod$tof == 0] <- 1
+
+#Creating a onetothreemoflag month flag
+bookMod$onetothreeflagmo <- 0  
+bookMod$onetothreeflagmo[((bookMod$qty3mo - bookMod$qty1mo) > 0) & (bookMod$qty1mo == 0)] <- 1
+
+#Creating a flag to track if the user has ordered in the past 1 month
+bookMod$orderinrecent1mo <- 0
+bookMod$orderinrecent1mo[(bookMod$recency <= 30) && (bookMod$tof > 0)] <- 1
+
+#Creating a flag to track if the user has ordered in the past 3 months
+bookMod$orderinrecent3mo <- 0
+bookMod$orderinrecent3mo[(bookMod$recency <= 90) & (bookMod$tof != 0)] <- 1
+
+#Creating a flag to track if the user has ordered in the past 6 months
+bookMod$orderinrecent6mo <- 0
+bookMod$orderinrecent6mo[(bookMod$recency <= 180) & (bookMod$tof != 0)] <- 1
+
+#Creating a flag to track if the user has ordered in the past 12 months
+bookMod$orderinrecent12mo <- 0
+bookMod$orderinrecent12mo[(bookMod$recency <= 360) & (bookMod$tof != 0)] <- 1
+
+#Creating a flag to track if the user started using the website in the past 30 days
+bookMod$startedinrecent1mo <- 0
+bookMod$startedinrecent1mo[(bookMod$tof <= 30) & (bookMod$tof != 0)] <- 1
+
+#Creating a flag to track if the user started using the website in the past 90 days
+bookMod$startedinrecent3mo <- 0
+bookMod$startedinrecent3mo[(bookMod$tof <= 90) & (bookMod$tof != 0)] <- 1
+
+#Creating a flag to track if the user started using the website in the past 180 days
+bookMod$startedinrecent6mo <- 0
+bookMod$startedinrecent6mo[(bookMod$tof <= 180) & (bookMod$tof != 0)] <- 1
+
+#Creating a flag to track if the user started using the website in the past 360 days
+bookMod$startedinrecent12mo <- 0
+bookMod$startedinrecent12mo[(bookMod$tof <= 360) & (bookMod$tof != 0)] <- 1
+
+#Creating a field to calculate % of total sales in the past 3 month
+bookMod$PerSales3mo <- bookMod$price3mo / bookMod$amount * 100.0
+bookMod$PerSales3mo[is.na(bookMod$PerSales3mo)] <- 0
+
+#Creating a field to calculate % of total sales in the past 6 month
+bookMod$PerSales6mo <- bookMod$price6mo / bookMod$amount * 100.0
+bookMod$PerSales6mo[is.na(bookMod$PerSales6mo)] <- 0
+
+bookMod$amtuponorders <- bookMod$amount / bookMod$frequency
+bookMod$qtyuponorders <- bookMod$qty / bookMod$frequency
+bookMod$amtuponqty <- bookMod$amount / bookMod$qty
+bookMod$ordersupontof <- bookMod$frequency / bookMod$tof
+bookMod$amtupontof <- bookMod$amount / bookMod$tof
+bookMod$qtyupontof <- bookMod$qty / bookMod$tof
+
+bookMod$amtuponorders[is.na(bookMod$amtuponorders)] <- 0
+bookMod$qtyuponorders[is.na(bookMod$qtyuponorders)] <- 0
+bookMod$amtuponqty[is.na(bookMod$amtuponqty)] <- 0
+bookMod$ordersupontof[is.na(bookMod$ordersupontof)] <- 0
+bookMod$amtupontof[is.na(bookMod$amtupontof)] <- 0
+bookMod$qtyupontof[is.na(bookMod$qtyupontof)] <- 0
+```
+# Removing Outliers
+
+```{r}
+bookModwo <- bookMod
+bookModwo2 <- bookModwo[bookModwo$amtuponorders < 1000,]
+bookModwo3 <- bookModwo2[bookModwo2$qtyuponorders < 40,]
+bookModwo4 <- bookModwo3[bookModwo3$amtuponqty < 600,]
+plot(bookModwo4$amtuponorders)
+plot(bookModwo4$qtyuponorders)
+plot(bookModwo4$amtuponqty)
+
+perRemoval = (dim(bookMod)[1] - dim(bookModwo4)[1]) / dim(bookMod)[1] * 100
+```
+
+#Preliminary logistic regression model on the created dataset
+
+```{r}
+# Separating out the test from training dataset
+bookModTrain <- bookModwo4[!is.na(bookModwo4$logtargamt),]
+
+
+# Removing tof = 0
+bookModTrain <- bookModTrain[bookModTrain$tof > 0,]
+
+str(bookModTrain)
+
+InitialFactor = dim(bookModTrain[bookModTrain$successFlag == 1,])[1]
+
+
+#---------------------------------------------------------------------------------
+#This data will be used for linear regression
+bookModTrain2 <- subset(bookModTrain, logtargamt > 0)
+dim(bookModTrain2)
+#---------------------------------------------------------------------------------
+
+set.seed(100)
+# Bootstraping the data
+w = ifelse(bookModTrain$successFlag == 0, 0.8 / length(which(bookModTrain$successFlag == 0)) * 10000, 0.2 / length(which(bookModTrain$successFlag == 1)) * 10000)
+bs_idx = sample(seq_len(nrow(bookModTrain)), nrow(bookModTrain), prob=w, replace = TRUE)
+bookModTrain = bookModTrain[bs_idx, ]
+
+ScalingFactor <- 1.0 * (dim(bookModTrain[bookModTrain$successFlag == 1,])[1] - InitialFactor) / InitialFactor
+
+# Running the logistic regression
+bookglm1 <- glm(as.factor(successFlag) ~ 
+                  recency +
+                  frequency +
+                  amount +
+                  tof +
+                  Mgroup +
+                  Fgroup +
+                  qty3mo +
+                  price3mo +
+                  qty6mo +
+                  price6mo +
+                  qty1mo +
+                  price1mo +
+                  qty12mo +
+                  price12mo +
+                  qty +
+                  orderinrecent3mo : orderinrecent6mo : orderinrecent12mo +
+                  orderinrecent3mo : orderinrecent6mo + 
+                  onetothreeflagmo +
+                  orderinrecent1mo +
+                  orderinrecent3mo +
+                  orderinrecent6mo +
+                  orderinrecent12mo +
+                  startedinrecent1mo +
+                  startedinrecent3mo +
+                  startedinrecent6mo +
+                  startedinrecent12mo +
+                  PerSales3mo +
+                  PerSales6mo +
+                  amtuponorders +
+                  qtyuponorders +
+                  amtuponqty +
+                  ordersupontof +
+                  amtupontof +
+                  qtyupontof +
+                  Mhistory19 +
+                  Mcartoons5 +
+                  Mconthist20 +
+                  Fhistory19:Mhistory19 +
+                  Fhealth35:Mhealth35 +
+                  Fconthist20 +
+                  Mcartoons5:Fcartoons5 +
+                  Mconthist20:Fconthist20
+                ,
+                
+               data = bookModTrain,
+               family = binomial)
+
+
+#Running best subset
+bookglm <- step(bookglm1, trace = 0)
+
+
+# Checking VIFs
+library(faraway)
+bookModTrain$int1 = bookModTrain$Mhistory19*bookModTrain$Fhistory19
+bookModTrain$int2 = bookModTrain$Mhealth35*bookModTrain$Fhealth35
+bookModTrain$int3 = bookModTrain$Fconthist20*bookModTrain$Mconthist20
+vif(bookModTrain[,c('recency','frequency','tof','Mgroup','Fgroup','qty6mo','price6mo','qty1mo','price12mo','qty','orderinrecent3mo','orderinrecent6mo','orderinrecent12mo','startedinrecent3mo','startedinrecent6mo','startedinrecent12mo','PerSales3mo','PerSales6mo','amtuponqty','qtyupontof','Mhistory19','Mcartoons5','Mconthist20','Fconthist20','int1','int2','int3')])
+
+
+#Refitting the model considering the VIFs into consideration and remiving the insignificant variables from the earlier model
+bookglm <- glm(as.factor(successFlag) ~ 
+                 recency +
+                  frequency +
+                  tof +
+                  Mgroup +
+                  Fgroup +
+                  qty6mo +
+                  price6mo +
+                  qty1mo +
+                  price12mo +
+                  qty +
+                  orderinrecent3mo +
+                  orderinrecent6mo +
+                  orderinrecent12mo +
+                  startedinrecent3mo +
+                  startedinrecent6mo +
+                  startedinrecent12mo +
+                  PerSales3mo +
+                  PerSales6mo +
+                  amtuponqty +
+                  qtyupontof +
+                  Mhistory19 +
+                  Mcartoons5 +
+                  Mhistory19:Fhistory19 +
+                  Fhealth35:Mhealth35 +
+                  Mconthist20:Fconthist20
+
+                ,
+                
+               data = bookModTrain,
+               family = binomial)
+
+summary(bookglm)
+
+
+#New VIFs
+vif(bookModTrain[,c('recency','frequency','tof','Mgroup','Fgroup','qty6mo','price6mo','qty1mo','price12mo','qty','orderinrecent3mo','orderinrecent6mo','orderinrecent12mo','startedinrecent3mo','startedinrecent6mo','startedinrecent12mo','PerSales3mo','PerSales6mo','amtuponqty','qtyupontof','Mhistory19','Mcartoons5','int1','int2','int3')])
+
+
+#Model Diagnostics
+bookModTrainTest <- bookModwo4[!is.na(bookModwo4$logtargamt),]
+bookModTrainTest <- bookModTrainTest[bookModTrainTest$tof > 0,]
+
+predProbTrain <- predict(bookglm, bookModTrainTest, type = "response")
+
+# Plotting ROC Curve
+
+plot.roc(bookModTrainTest$successFlag, predProbTrain, xlab = "Specificity")
+auc(roc(bookModTrainTest$successFlag, predProbTrain))
+
+```
+
+# Plotting the data
+
+```{r}
+# Plotting the data for the fields which will be considered for linear regression
+plot(bookModTrain2[,c('logtargamt','recency','frequency','tof', 'amount')])
+
+```
+
+
+# Linear Regression begins here
+```{r}
+
+# Removing observations with tof > 0
+bookModTrain2 <- bookModTrain2[bookModTrain2$tof > 0,]
+
+booklm1 <- lm(logtargamt ~ 
+                 recency +
+                  frequency +
+                  amount +
+                  tof +
+                  Mgroup +
+                  Fgroup +
+                  qty3mo +
+                  price3mo +
+                  qty6mo +
+                  price6mo +
+                  qty1mo +
+                  price1mo +
+                  qty12mo +
+                  price12mo +
+                  qty +
+                  orderinrecent3mo : orderinrecent6mo : orderinrecent12mo +
+                  orderinrecent3mo : orderinrecent6mo + 
+                  onetothreeflagmo +
+                  orderinrecent1mo +
+                  orderinrecent3mo +
+                  orderinrecent6mo +
+                  orderinrecent12mo +
+                  startedinrecent1mo +
+                  startedinrecent3mo +
+                  startedinrecent6mo +
+                  startedinrecent12mo +
+                  PerSales3mo +
+                  PerSales6mo +
+                  amtuponorders +
+                  qtyuponorders +
+                  amtuponqty +
+                  ordersupontof +
+                  amtupontof +
+                  qtyupontof +
+                  Mhistory19 +
+                  Mcartoons5 +
+                  Mconthist20 +
+                  Fhistory19:Mhistory19 +
+                  Fhealth35:Mhealth35 +
+                  Fconthist20 +
+                  Mcartoons5:Fcartoons5 +
+                  Mconthist20:Fconthist20
+                ,
+                
+               data = bookModTrain2)
+
+#Running best Subset
+booklm <- step(booklm1, trace = 0)
+summary(booklm)
+```
+
+# Model Diagnostics
+
+```{r}
+plot(booklm) 
+plot(booklm, c(4,6))
+str(booklm)
+plot(cooks.distance(booklm))
+plot(hat(model.matrix(booklm)))
+```
+
+# Reruning the regression removing outliers and influential observations
+
+```{r}
+bookModTrain3 <- bookModTrain2
+
+# Removing data points with cook's distance > 0.1
+bookModTrain3 <- bookModTrain3[(cooks.distance(booklm) <= 0.1),]
+dim(bookModTrain3)
+
+# Checking VIFs
+library(faraway)
+bookModTrain3$int1 = bookModTrain3$Mhistory19 * bookModTrain3$Fhistory19
+vif(bookModTrain3[,c('frequency','amount','qty3mo','price3mo','amtuponorders','amtuponqty','ordersupontof','amtupontof','qtyupontof','Mhistory19','Fconthist20', 'Mconthist20', 'int1')])
+
+# As we cans see, we have a few variables with VIFs which are significantly high
+
+#Rerunning the model removing the outliers based on cook's distance, considering the VIFs into consideration and removing the insignificant variables from the earlier model
+booklm1r2 <- lm(logtargamt ~ 
+                  frequency +
+                amount +
+                amtuponorders +
+                amtuponqty +
+                Mhistory19 +
+                Mhistory19:Fhistory19,
+                  
+                  data = bookModTrain3
+                  )
+
+summary(booklm1r2)
+
+```
+
+# Model diagnostics and reruning the model
+
+```{r}
+# Checking diagnostics
+plot(booklm1r2) 
+plot(booklm1r2, c(4,6))
+
+# Checking VIFs
+library(faraway)
+bookModTrain3$int1 = bookModTrain3$Mhistory19 * bookModTrain3$Fhistory19
+vif(bookModTrain3[,c('frequency','amount','amtuponorders','Mhistory19', 'int1','amtuponqty')])
+```
+
+
+
+## Tof = 0 handling
+
+```{r}
+
+booktof0 <- bookModwo4[(!is.na(bookModwo4$logtargamt)),]
+booktof01 <- booktof0[booktof0$tof == 0,]
+
+dim(booktof01)
+
+#the predicted value for non-responders
+predlogtargtof0 = mean(booktof01$logtargamt[booktof01$logtargamt > 0])
+
+#the probability for non-responders
+predprobtof0 = length(booktof01$logtargamt[booktof01$logtargamt > 0]) / length(booktof01$logtargamt)
+```
+
+## Prediction of Responder and Non-responders and Final results
+```{r}
+booktesttest <- bookMod[(is.na(bookMod$logtargamt)),]
+dim(booktesttest)
+
+booktest <- booktest[,c('id', 'logtargamt')]
+str(booktesttest)
+
+booktesttest$logtargamt <- NULL
+booktesttest <- merge(booktesttest, booktest, by = 'id', all.x = TRUE, all.y = FALSE)
+booktesttest$successFlag[booktesttest$logtargamt > 0] <- 1
+
+#the final probability for each responder
+booktest1 = booktesttest[booktesttest$tof > 0,]
+booktest0 = booktesttest[booktesttest$tof == 0,]
+
+dim(booktest1)
+dim(booktest0)
+
+predProb = predict(bookglm, newdata = booktest1, type = 'response')
+predScale = -log(ScalingFactor) + log(predProb / (1+predProb))
+adjProb = exp(predScale) / (1 + exp(predScale)) #the final probability for each responder
+length(adjProb)
+
+booktest1$successFlag <- 0
+booktest1$successFlag[booktest1$logtargamt > 0] <- 1
+length(booktest1$successFlag)
+length(adjProb)
+
+plot.roc(booktest1$successFlag, adjProb, xlab = "Specificity")
+auc(roc(booktest1$successFlag, adjProb))
+
+
+
+#the predicted value for responders
+predictedvals = predict(booklm1r2, newdata=booktest1)
+predictednewvals = rep(predlogtargtof0,length(booktest0$id))
+
+#the final predictions for responders
+result1 = booktest1[c('id', 'logtargamt')]
+result1$predlog = adjProb * predictedvals
+
+#final predictions for non-responders
+result0 = booktest0[c('id', 'logtargamt')]
+result0$predlog = predprobtof0 * predictednewvals
+
+#combine the two results 
+result = rbind(result0, result1)
+result$predtarget = exp(result$predlog) - 1
+result$target = exp(result$logtargamt) - 1
+
+#adjust for extreme values 
+#change any predicted value larger than 2 times the max amount in the training set (3 data points) to 2 times the max amount of the training set 
+result[result$predtarget > 2*max(exp(bookModTrain3$logtargamt)-1),]$predtarget = max(exp(bookModTrain3$logtargamt)-1) 
+
+
+# 1. Statistical Criterion
+
+#sse
+result_ssep = sum((result$predtarget - result$target)^2)
+result_ssep
+rmse = sqrt(result_ssep / nrow(result)-1)
+
+# 2. Financial Criterion
+
+#payoff
+payoff = sum(result[order(result$predtarget, decreasing = TRUE),]$target[c(1:500)]) / sum(result[order(result$target, decreasing = TRUE),]$target[c(1:500)])
+payoff
+
+#Optimal customer count to reach out to
+
+payoffTable <- result[,c(1,2,3)] 
+names(payoffTable) <- c('NoOfElements','Payoff', 'STP')
+
+for(i in seq(1,dim(result)[1]))
+{
+  topEvalTable <- head(result[order(result$predtarget, decreasing = TRUE),],i)
+  payoffTable$NoOfElements[i] <- i
+  payoffTable$Payoff[i] <- sum(topEvalTable$target)
+  payoffTable$STP[i] <- payoffTable$Payoff[i] * 0.25 - i 
+}
+
+plot(payoffTable$NoOfElements, payoffTable$STP)
+
+plot(payoffTable$NoOfElements, payoffTable$STP, xlim = c(0,3000), ylim = c(0,1500))
+payoffTable$NoOfElements[payoffTable$STP == max(payoffTable$STP)]
+paste("Maximum number of customers to reach out to maximize the short term profit:", payoffTable$NoOfElements[payoffTable$STP == max(payoffTable$STP)])
+paste("Maximum short term profit: $", max(payoffTable$STP))
+
+#payoff for top # of customers per the above calculations
+payoff2 = sum(result[order(result$predtarget, decreasing = TRUE),]$target[c(1:payoffTable$NoOfElements[payoffTable$STP == max(payoffTable$STP)])]) / sum(result[order(result$target, decreasing = TRUE),]$target[c(1:payoffTable$NoOfElements[payoffTable$STP == max(payoffTable$STP)])])
+payoff2
+
+
+```
+
+

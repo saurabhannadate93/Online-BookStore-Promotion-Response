@@ -1,0 +1,196 @@
+---
+title: "Saurabh1"
+author: "JLewyckyj"
+date: "11/25/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Reading the files and importing libraries
+
+```{r}
+setwd("/nfs/home/jsl2985/z/Predictive Analytics/Projects")
+library(lubridate)
+
+book <- read.csv("book.csv")
+ordersall <- read.csv("ordersall.csv", stringsAsFactors = FALSE)
+
+summary(book)
+summary(ordersall)
+```
+
+# Coding success flag in the book database and dropping unnecessary variables
+```{r}
+book$successFlag <- 0
+book$successFlag[book$logtargamt > 0] = 1
+
+book <- book[,c('id', 'logtargamt', 'recency', 'frequency', 'amount', 'tof', 'successFlag')]
+summary(book)
+```
+# Extracting features from the ordersall dataset
+```{r}
+#Converting the orderdate column to date format
+typeof(ordersall$orddate)
+head(ordersall)
+ordersall$orddate <- dmy(ordersall$orddate)
+head(ordersall)
+
+#Creating a 3 months database
+ordersall3mo <- ordersall[ordersall$orddate >= dmy('1-May-14'),]
+summary(ordersall3mo)
+aggordersall3mo <- ordersall3mo[,c('id', 'qty', 'price')]
+aggordersall3mo <- aggregate(aggordersall3mo, by = list(aggordersall3mo$id), FUN = sum)
+aggordersall3mo$id <- aggordersall3mo$Group.1
+aggordersall3mo <- aggordersall3mo[,c('id', 'qty', 'price')]
+summary(aggordersall3mo)
+
+#Creating a 6 months database
+ordersall6mo <- ordersall[ordersall$orddate >= dmy('1-Feb-14'),]
+summary(ordersall6mo)
+aggordersall6mo <- ordersall6mo[,c('id', 'qty', 'price')]
+aggordersall6mo <- aggregate(aggordersall6mo, by = list(aggordersall6mo$id), FUN = sum)
+aggordersall6mo$id <- aggordersall6mo$Group.1
+aggordersall6mo <- aggordersall6mo[,c('id', 'qty', 'price')]
+summary(aggordersall6mo)
+```
+
+#Merging and creating new features
+
+```{r}
+
+bookMod <- merge(book, aggordersall3mo, by = 'id', all.x = TRUE, all.y = FALSE)
+bookMod <- merge(bookMod, aggordersall6mo, by = 'id', all.x = TRUE, all.y = FALSE, suffixes = c('3mo','6mo'))
+#summary(book)
+#summary(bookMod)
+
+bookMod$qty3mo[is.na(bookMod$qty3mo)] <- 0
+bookMod$qty6mo[is.na(bookMod$qty6mo)] <- 0
+bookMod$price3mo[is.na(bookMod$price3mo)] <- 0
+bookMod$price6mo[is.na(bookMod$price6mo)] <- 0
+
+#Creating a new user flag
+bookMod$newUserFlag <- 0
+bookMod$newUserFlag[bookMod$tof == 0] <- 1
+
+
+#Creating a flag to track if the user has ordered in the past 1 month
+bookMod$orderinrecent1mo <- 0
+bookMod$orderinrecent1mo[(bookMod$recency <= 30) && (bookMod$tof > 0)] <- 1
+
+
+#Creating a flag to track if the user has ordered in the past 3 months
+bookMod$orderinrecent3mo <- 0
+bookMod$orderinrecent3mo[(bookMod$recency <= 90) & (bookMod$tof != 0)] <- 1
+
+
+#Creating a flag to track if the user has ordered in the past 6 months
+bookMod$orderinrecent6mo <- 0
+bookMod$orderinrecent6mo[(bookMod$recency <= 180) & (bookMod$tof != 0)] <- 1
+
+
+#Creating a flag to track if the user started using the website in the past 30 days
+bookMod$startedinrecent1mo <- 0
+bookMod$startedinrecent1mo[(bookMod$tof <= 30) & (bookMod$tof != 0)] <- 1
+
+
+#Creating a flag to track if the user started using the website in the past 90 days
+bookMod$startedinrecent3mo <- 0
+bookMod$startedinrecent3mo[(bookMod$tof <= 90) & (bookMod$tof != 0)] <- 1
+
+
+#Creating a flag to track if the user started using the website in the past 180 days
+bookMod$startedinrecent6mo <- 0
+bookMod$startedinrecent6mo[(bookMod$tof <= 180) & (bookMod$tof != 0)] <- 1
+
+#Creating a field to calculate % of total sales in the past 3 month
+bookMod$PerSales3mo <- bookMod$price3mo / bookMod$amount * 100.0
+bookMod$PerSales3mo[is.na(bookMod$PerSales3mo)] <- 0
+
+
+#Creating a field to calculate % of total sales in the past 6 month
+bookMod$PerSales6mo <- bookMod$price6mo / bookMod$amount * 100.0
+bookMod$PerSales6mo[is.na(bookMod$PerSales6mo)] <- 0
+
+summary(bookMod)
+
+```
+
+#Preliminary logistic regression model on the created dataset
+
+```{r}
+# Separating out the test from training dataset
+
+bookModTrain <- bookMod[(!is.na(bookMod$logtargamt)),]
+
+bookglm <- glm(successFlag ~ 
+                 recency + 
+                 frequency + 
+                 amount +
+                 tof +
+                 qty3mo + 
+                 price3mo + 
+                 qty6mo +
+                 price6mo +
+                 orderinrecent1mo +
+                 orderinrecent3mo +
+                 orderinrecent6mo +
+                 startedinrecent1mo +
+                 startedinrecent3mo +
+                 startedinrecent6mo +
+                 PerSales3mo +
+                 PerSales6mo,
+               data = bookModTrain,
+               family = binomial)
+
+
+summary(bookglm)
+
+```
+
+#JL: Linear Regression Model version of above Logit model
+
+```{r}
+bookModTrain2 <- subset(bookModTrain, logtargamt > 0)
+
+booklm <- lm(logtargamt ~ 
+               recency + 
+                 frequency + 
+                 amount +
+                 tof +
+                 qty3mo + 
+                 price3mo + 
+                 qty6mo +
+                 price6mo +
+                 orderinrecent1mo +
+                 orderinrecent3mo +
+                 orderinrecent6mo +
+                 startedinrecent1mo +
+                 startedinrecent3mo +
+                 startedinrecent6mo +
+                 PerSales3mo +
+                 PerSales6mo,
+               data = bookModTrain2)
+
+summary(booklm)
+```
+
+In Logit, significant variables are:<br>
+recency, tof, frequency at p < 1%<br>
+amount, PerSales6mo at p < 5% <br>
+price6mo at p < 10%<br><br>
+
+In Linear, significant variables are:<br>
+frequency, amount at p < 1%<br>
+qty3mo, orderinrecent3mo at p <10%
+
+#Multicollinearity in Linear Model
+
+```{r}
+cor(bookModTrain2[,c(2,3,4,5,6)])
+```
+
+amount and frequency are highly correlated<br>
+tof is fairly correlated with frequency, amount, and recency

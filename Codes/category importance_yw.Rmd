@@ -1,0 +1,115 @@
+---
+title: "401 project"
+author: "Yiwei Zhang"
+date: "11/12/2018"
+output: html_document
+---
+
+```{r}
+#helper function to get the accuracy of prediction and actual
+accy = function(actual, predicted) {
+  accy = sum(actual == predicted)/length(actual)
+  return(accy)
+}
+rmse = function(actual, predicted){
+  res = sqrt(sum((actual - predicted)^2) / length(actual))
+  return(res)
+}
+```
+
+```{r}
+#read in the data
+book = read.csv("~/Desktop/MSiA401/project/book.csv")
+book_train = read.csv("~/Desktop/MSiA401/project/booktrain.csv")
+book_test = read.csv("~/Desktop/MSiA401/project/booktest.csv")
+order = read.csv("~/Desktop/MSiA401/project/booktest.csv")
+#train test split based on given data
+btrain = merge(book, book_train, by = "id")
+btrain = subset(btrain, select = -c(logtargamt.y,X) )
+btest = merge(book, book_test, by = "id")
+btest = subset(btest, select = -c(logtargamt.x, X))
+```
+
+```{r}
+head(btrain)
+```
+
+In general category variables are of pretty importance 
+```{r}
+#create binary variables for classification model
+btrain$buy = ifelse(btrain$logtargamt.x > 0, 1, 0)
+btest$buy = ifelse(btest$logtargamt.y > 0, 1, 0)
+
+#random forest for variable importance 
+library(caret)
+ctrl = trainControl(method="cv", number = 5) 
+class.rf = train(as.factor(buy) ~ ., data = subset(btrain, select = -c(id, logtargamt.x)), method = "rf", trControl = ctrl, tuneGrid = expand.grid(mtry = c(5, 10, 20, 30, 50)))
+rf.accy = accy(btest$buy, predict(class.rf, newdata=btest))
+rf.accy #0.9618
+```
+
+```{r}
+#accuracy and variable importance 
+#summary(class.rf)
+varImp(class.rf)
+```
+
+If only uses category variables, added M44, 12, 36 and F50 to the list. 
+```{r}
+#only use categories variables
+btrain_cat = btrain[,c(1, 2, 7:67)]
+class.rf2 = train(as.factor(buy) ~ ., data = subset(btrain_cat, select = -c(id, logtargamt.x)), method = "rf", trControl = ctrl, tuneGrid = expand.grid(mtry = c(5, 10, 20, 30, 50)))
+rf.accy2 = accy(btest$buy, predict(class.rf2, newdata=btest))
+```
+
+So, adding categories do not in extra valuable information ....
+```{r}
+#accuracy and feature importance
+rf.accy2 #0.9606, same as null model (classifying everything to 0); sample ratio is 0.9606
+varImp(class.rf2)
+```
+
+```{r}
+#if only use non-categories
+class.rf0 = train(as.factor(buy) ~ ., data = subset(btrain, select = c(recency, frequency, amount, tof, buy)), method = "rf", trControl = ctrl, tuneGrid = expand.grid(mtry = c(1,2,3,4)))
+rf.accy0 = accy(btest$buy, predict(class.rf0, newdata=btest)) #0.9625, same as full model
+rf.accy0
+```
+
+```{r}
+#regression, use only non-0 data
+ctrl = trainControl(method="cv", number = 5) 
+bregre = btrain[which(btrain$logtargamt.x > 0),]
+bregre_test = btest[which(btest$logtargamt.y > 0),]
+regre.rf = train(logtargamt.x ~ ., data = subset(bregre, select = -c(id, buy)), method = "rf", trControl = ctrl, tuneGrid = expand.grid(mtry = c(5, 10, 20, 30, 50)), importance = T)
+rf.rmse.regre = rmse(bregre_test$logtargamt.y, predict(regre.rf, newdata=bregre_test))
+rf.rmse.regre #0.70
+```
+
+```{r}
+varImp(regre.rf)
+```
+
+```{r}
+#only uses non-categories
+regre.rf0 = train(logtargamt.x ~ ., data = subset(bregre, select = c(recency, frequency, amount, tof, logtargamt.x)), method = "rf", trControl = ctrl, tuneGrid = expand.grid(mtry = c(1,2,3,4)), importance = T)
+rf.regre0 = rmse(bregre_test$logtargamt.y, predict(regre.rf0, newdata=bregre_test)) 
+rf.regre0 #0.6987
+```
+```{r}
+varImp(regre.rf0)
+```
+```{r}
+#interaction among the important categories
+#20 14 35 19 8 5
+#10 is really low so deleted
+regre.rf2 = train(logtargamt.x ~ recency + frequency + amount + tof + Fconthist20 + Mconthist20 + Fmusic14 + Mmusic14 + Fhealth35  + Mhealth35 + Freligion8 + Mreligion8 + Fhistory19 + Mhistory19 + Mcartoons5 + Fcartoons5 + Fconthist20*Mconthist20 + Fmusic14*Mmusic14 + Fhealth35*Mhealth35 + Freligion8*Mreligion8 + Fcartoons5*Mcartoons5 + Fhistory19*Mhistory19, data = subset(bregre, select = -c(id, buy)), method = "rf", trControl = ctrl, tuneGrid = expand.grid(mtry = c(5, 10, 15, 20)), importance = T)
+rf.rmse.regre2 = rmse(bregre_test$logtargamt.y, predict(regre.rf2, newdata=bregre_test))
+rf.rmse.regre2 #0.7045
+```
+
+```{r}
+varImp(regre.rf2)
+```
+
+

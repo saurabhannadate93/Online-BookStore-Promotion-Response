@@ -1,0 +1,89 @@
+---
+title: "PredictiveProj"
+author: "Molly Srour"
+date: "11/12/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+books <- read.csv('/Users/mollysrour/Downloads/book.csv')
+ordersall <-  read.csv('/Users/mollysrour/Downloads/ordersall.csv', stringsAsFactors = FALSE)
+booktrain <- read.csv('/Users/mollysrour/Downloads/booktrain.csv')
+booktest <- read.csv('/Users/mollysrour/Downloads/booktest.csv')
+#books <- books[,1:6]
+trainset <- books[books$id %in% booktrain$id,] 
+testset <- books[books$id %in% booktest$id,] 
+testset$logtargamt <- booktest$logtargamt
+trainset$response <- ifelse(trainset$logtargamt>0,1,0)
+testset$response <- ifelse(testset$logtargamt>0,1,0)
+```
+
+
+Creating new column with the total quantity of books bought.
+```{r}
+id_andsum <- ddply(ordersall,~id,summarise,sum = sum(qty))
+train_id_andsum <- id_andsum[id_andsum$id %in% trainset$id,]
+test_id_andsum <- id_andsum[id_andsum$id %in% testset$id,]
+trainset <- trainset[trainset$tof > 0,]
+testset <- testset[testset$tof>0,]
+trainset$sum_quantity <- train_id_andsum$sum
+testset$sum_quantity <- test_id_andsum$sum
+```
+
+Preliminary logistic model 
+```{r}
+ordersall$orddate <- dmy(ordersall$orddate)
+ordersall1to3mo <- ordersall[ordersall$orddate <= dmy('1-July-14'),]
+ordersall1to3mo <- ordersall1to3mo[ordersall1to3mo$orddate >= dmy('1-May-14'),]
+aggordersall1to3mo <- ordersall1to3mo[,c('id', 'qty', 'price')]
+aggordersall1to3mo <- aggregate(aggordersall1to3mo, by = list(aggordersall1to3mo$id), FUN = sum)
+aggordersall1to3mo$id <- aggordersall1to3mo$Group.1
+aggordersall1to3mo <- aggordersall1to3mo[,c('id', 'qty', 'price')]
+bookMod <- merge(books, aggordersall1to3mo, by = 'id', all.y = TRUE, all.x = FALSE)
+bookMod$qtyDM[is.na(bookMod$qty)] <- 0
+bookMod$priceDM[is.na(bookMod$price)] <- 0
+bookMod$PerSales <- bookMod$price / bookMod$amount * 100.0
+
+bookMod$PerSales[is.na(bookMod$PerSales)] <- 0
+trainset$oneto3 <- 0
+trainset$oneto3[trainset$id %in% aggordersall1to3mo$id] <- 1
+testset$oneto3 <- 0
+testset$oneto3[testset$id %in% aggordersall1to3mo$id] <- 1
+trainset <- merge(trainset, aggordersall1to3mo, by = 'id', all.x = TRUE)
+trainset$qty[is.na(trainset$qty)] <- 0
+trainset$price[is.na(trainset$price)] <- 0
+trainset$PerSales <- trainset$price / trainset$amount * 100.0
+trainset$PerSales[is.na(trainset$PerSales)] <- 0
+testset <- merge(testset, aggordersall1to3mo, by = 'id', all.x = TRUE)
+testset$qty[is.na(trainset$qty)] <- 0
+testset$price[is.na(testset$price)] <- 0
+testset$PerSales <- testset$price / testset$amount * 100.0
+testset$PerSales[is.na(testset$PerSales)] <- 0
+trainset$RF.int <- (trainset$recency*trainset$frequency)
+trainset$AT.int <- (trainset$amount/trainset$tof)
+trainset$FT.int <- (trainset$frequency/trainset$tof)
+trainset$ST.int <- (trainset$sum_quantity/trainset$tof)
+testset$RF.int <- (testset$recency*testset$frequency)
+testset$AT.int <- (testset$amount/testset$tof)
+testset$FT.int <- (testset$frequency/testset$tof)
+testset$ST.int <- (testset$sum_quantity/testset$tof)
+
+mod.log <- glm(response ~ recency + frequency + 
+                  Fconthist20 +
+                 ST.int + oneto3 + sum_quantity,
+               family=binomial,
+               data=trainset)
+summary(mod.log)
+CCR <- rep(0,99)
+for(i in c(seq(0.01,0.99, by = 0.01))){
+  j = 100*i
+  tab <- table(mod.log$y, mod.log$fitted.values>i)
+  CCR[j] <- sum(diag(tab))/sum(tab)}
+pstar <- which.max(CCR)/100
+tab <- table(mod.log$y, mod.log$fitted.values>pstar)
+sum(diag(tab))/sum(tab) 
+```
+
+
+
+
