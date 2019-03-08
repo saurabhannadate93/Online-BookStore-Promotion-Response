@@ -54,6 +54,3 @@ in the training set
 
 4. booktest.csv: This le also has only two variables: id and logtargamt for 25,402
 customers in the test set.
-
-
-#### Refer to the final project report for the analyses details
