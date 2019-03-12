@@ -1,11 +1,6 @@
 # Online-BookStore-Promotion-Response
 Predict the response to an online bookstore promotional activity
 
-# Contributors:
-
-1. Saurabh Annadate
-2. Yiwei Zhang
-
 ## Business Situation: 
 A German online book seller has provided data on a sample of 33,713
 customers on their purchases of books prior to 01AUG2014 when a promotional offer was
